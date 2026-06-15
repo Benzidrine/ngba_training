@@ -32,8 +32,7 @@ if CKPT and os.path.exists(CKPT):
             model.state_dict()[k].copy_(v)
     print(f"  Loaded checkpoint (val_loss={ckpt.get('val_loss','?'):.2f})",flush=True)
 elif CKPT:
-    print(f"  Checkpoint not found — using base model",flush=True)
-    print("No checkpoint found — using base model",flush=True)
+    print("Checkpoint not found — using base model",flush=True)
 
 model.eval()
 

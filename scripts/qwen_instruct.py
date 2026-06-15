@@ -1,6 +1,6 @@
 """
 Proximal NBGA instruction fine-tuning of Qwen3.5-0.8B on Alpaca.
-Loss computed only on response tokens. 24 blocks, no chain rule between them.
+Standard language modeling loss on all tokens. 24 blocks, no chain rule between them.
 """
 import torch,torch.nn.functional as F,math,time,os,gc
 from transformers import AutoModelForCausalLM,AutoTokenizer
@@ -127,7 +127,7 @@ for step in range(N_STEPS):
 # ─── Save ─────────────────────────────────────────────────────────────────────
 vl=eval_loss()
 print(f"\nFinal val loss: {vl:.2f}",flush=True)
-save_path='./checkpoints/qwen_instruct_nbga.pt'
+save_path='./checkpoints/qwen_instruct_nbga_v2.pt'
 torch.save({
     'model_state':model.state_dict(),
     'val_loss':vl,

@@ -14,7 +14,7 @@ tok=AutoTokenizer.from_pretrained('Qwen/Qwen3.5-0.8B',trust_remote_code=True)
 tok.pad_token=tok.eos_token
 
 # Load raw WikiText-103 and tokenize
-wiki=load_dataset('wikitext','wikitext-103-raw-v1',split='train')
+wiki=load_dataset('Salesforce/wikitext','wikitext-103-raw-v1',split='train')
 wiki=wiki.select(range(5000))  # subset
 texts=[ex['text'] for ex in wiki if ex['text'].strip()]
 encs=tok(texts,truncation=True,padding=False,max_length=SEQ)
@@ -57,7 +57,6 @@ def eval_ppl():
             xb=val_x[j:j+BS].to(DEVICE);yb=val_y[j:j+BS].to(DEVICE)
             logits=model(xb).logits[:,:,:V]
             losses.append(F.cross_entropy(logits.reshape(-1,V),yb.view(-1)).item())
-    return math.exp(sum(losses)/len(losses))
     return math.exp(sum(losses)/len(losses))
 
 def forward_with_act(xb):
