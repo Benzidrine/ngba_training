@@ -71,4 +71,4 @@ Full recipe with expected timings in `recipes/QWEN.md`.
 
 ## License
 
-Apache 2.0
+MIT
