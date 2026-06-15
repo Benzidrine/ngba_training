@@ -65,7 +65,7 @@ Full recipe with expected timings in `recipes/QWEN.md`.
   title  = {NBGA: Training Residual Networks Without the Chain Rule},
   author = {Taran S. Marley},
   year   = {2026},
-  url    = {}
+   url    = {https://github.com/Benzidrine/ngba_training}
 }
 ```
 

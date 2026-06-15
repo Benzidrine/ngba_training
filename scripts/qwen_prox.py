@@ -1,22 +1,34 @@
 """
 Proximal NBGA fine-tuning of Qwen3.5-0.8B on WikiText-103.
 24 blocks, Gated DeltaNet architecture. Saves checkpoint.
+Downloads and tokenizes WikiText-103 via HuggingFace datasets.
 """
-import torch,torch.nn.functional as F,math,time,os,numpy as np
-from transformers import AutoModelForCausalLM
+import torch,torch.nn.functional as F,math,time,os
+from transformers import AutoModelForCausalLM,AutoTokenizer
+from datasets import load_dataset
 
 DEVICE='cuda';SEQ=512;BS=1;N_STEPS=500;PROX_LR=1e-5
-DATA_DIR="/home/taran/Repos/bitnet/data/wikitext_data"
 
-print("Loading data (Qwen3 tokenized)...",flush=True)
-train_data=np.load(f"{DATA_DIR}/qwen3_wikitext103_train.npy")
-val_data=np.load(f"{DATA_DIR}/qwen3_wikitext103_validation.npy")
-V=int(train_data.max())+1  # Qwen's actual vocab
-train_x=torch.tensor(train_data[:5000,:SEQ],dtype=torch.long)
-train_y=torch.tensor(train_data[:5000,1:SEQ+1],dtype=torch.long)
-val_x=torch.tensor(val_data[:100,:SEQ],dtype=torch.long)
-val_y=torch.tensor(val_data[:100,1:SEQ+1],dtype=torch.long)
-print(f"V={V}, train={len(train_x)}, val={len(val_x)}",flush=True)
+print("Loading WikiText-103 and tokenizing with Qwen tokenizer...",flush=True)
+tok=AutoTokenizer.from_pretrained('Qwen/Qwen3.5-0.8B',trust_remote_code=True)
+tok.pad_token=tok.eos_token
+
+# Load raw WikiText-103 and tokenize
+wiki=load_dataset('wikitext','wikitext-103-raw-v1',split='train')
+wiki=wiki.select(range(5000))  # subset
+texts=[ex['text'] for ex in wiki if ex['text'].strip()]
+encs=tok(texts,truncation=True,padding=False,max_length=SEQ)
+# Flatten all tokens into a single sequence, then chunk
+all_ids=[]
+for e in encs['input_ids']:all_ids.extend(e)
+n=len(all_ids)//SEQ//BS*BS*SEQ
+ids=torch.tensor(all_ids[:n],dtype=torch.long).reshape(-1,SEQ)
+train_x=ids[:-1];train_y=ids[1:]
+V=tok.vocab_size
+# Hold out last 100 sequences for validation
+val_x=train_x[-100:];val_y=train_y[-100:]
+train_x=train_x[:-100];train_y=train_y[:-100]
+print(f"V={V}, train={len(train_x)}, val={len(val_x)} sequences",flush=True)
 
 print("Loading Qwen3.5-0.8B...",flush=True)
 model=AutoModelForCausalLM.from_pretrained('Qwen/Qwen3.5-0.8B',trust_remote_code=True).to(DEVICE)
