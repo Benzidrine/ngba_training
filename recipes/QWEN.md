@@ -1,8 +1,12 @@
-# Fine-tuning Qwen3.5-0.8B with Proximal NBGA
+# Fine-tuning Qwen Models with NBGA
 
-A complete recipe to further fine-tune Qwen3.5-0.8B using Proximal NBGA — no chain rule between the 24 transformer blocks. Each block updates independently using only the final output error $\delta_L$.
+A complete recipe to fine-tune Qwen models of various sizes using NBGA — no chain rule between transformer blocks. Each block updates independently using only the final output error $\delta_L$.
 
-**Note:** Qwen3.5-0.8B (HuggingFace: `Qwen/Qwen3.5-0.8B`) is already instruct-tuned. Our NBGA fine-tuning adds additional data on top. The base model `Qwen/Qwen3.5-0.8B-Base` is the raw pretrained version without instruction tuning.
+Two recipies are provided:
+1. **Proximal NBGA** for Qwen3.5-0.8B (24 blocks, 752M params) — uses a proximal term $\lambda\|W - W_0\|^2$ for stable fine-tuning.
+2. **High-LR NBGA** for Qwen3.5-4B (32 blocks, 4B params) — uses pure $\delta_L$ broadcast with $10^{-2}$ learning rate, no proximal term needed.
+
+**Note:** Both Qwen3.5-0.8B and Qwen3.5-4B (HuggingFace: `Qwen/Qwen3.5-0.8B` / `Qwen/Qwen3.5-4B`) are already instruct-tuned. Our NBGA fine-tuning adds additional data on top.
 
 ## Prerequisites
 
@@ -64,20 +68,47 @@ python ../scripts/qwen_chat.py --base             # Base Qwen3.5-0.8B for compar
 python ../scripts/qwen_chat.py --ckpt path.pt     # Custom checkpoint
 ```
 
+---
+
+## Stage 4: Scaling Up — Qwen3.5-4B on OpenCodeInstruct
+
+Fine-tune Qwen3.5-4B (32 blocks, 4B parameters) using pure $\delta_L$ broadcast with high learning rate.
+
+```bash
+python ../scripts/qwen_4b_nbga.py
+```
+
+- Dataset: OpenCodeInstruct (2K examples)
+- Steps: 5000 (~30 min on RTX 4090)
+- Expected improvement: PPL 3.20 → 2.16, HumanEval +5.5%
+
+**Key hyperparameters:**
+- Learning rate: $10^{-2}$ (100× higher than 0.8B recipe)
+- No proximal term needed — high LR compensates for gradient approximation error
+- $\gamma = 1.0$ (pure $\delta_L$ broadcast, no depth decay)
+- Gradient norm clipping at 1.0
+
+---
+
 ## Architecture Details
 
-- Model: Qwen3.5-0.8B (752M params)
+### Qwen3.5-0.8B
 - 24 transformer blocks with Gated DeltaNet + Gated Attention
 - Hidden dimension: 1024
 - All blocks updated with Proximal NBGA — proximal term $\lambda\|W - W_0\|^2$
 
+### Qwen3.5-4B
+- 32 transformer blocks with hybrid Gated DeltaNet + Gated Attention
+- Hidden dimension: 2560
+- All blocks updated with NBGA, no proximal term
+
 ## Memory
 
-| Component | Size |
-|-----------|------|
-| Model (FP16) | ~1.6 GB |
-| Activations (BS=1) | ~0.5 GB |
-| Proximal term storage | ~1.6 GB (or CPU) |
-| **Total** | **~3.7 GB** |
+| Component | 0.8B | 4B |
+|-----------|------|-----|
+| Model (BF16) | ~1.6 GB | ~8.5 GB |
+| Activations (BS=1) | ~0.5 GB | ~2 GB |
+| Proximal storage | ~1.6 GB | N/A |
+| **Total** | **~3.7 GB** | **~10.5 GB** |
 
-Fits comfortably on any modern GPU.
+Both fit on a single RTX 4090 (24 GB).
