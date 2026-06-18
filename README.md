@@ -22,6 +22,23 @@ $$\frac{\partial L}{\partial W_l} \approx h_{l-1} \otimes \delta_L$$
 
 This is a parallelizable outer product — no sequential backward propagation needed.
 
+## Controlled Experiments: TinyShakespeare
+
+All methods compared on the same architecture (d=128, conv+attn+MLP, 1M training tokens) with identical training budget:
+
+| Method | Val PPL | vs backprop |
+|--------|---------|-------------|
+| Full backprop | 6.50 | — |
+| **NBGA + weight clamp (±0.05)** | **6.75** | **+4%** |
+| SPSA (per-layer) | 7.78 | +20% |
+| NBGA + ReZero gates | ~11.5 | +77% |
+| NBGA + alternating SPSA | 11.75 | +81% |
+| NBGA + layer diminishing | 12.23 | +88% |
+| NBGA + gated residual | 12.33 | +90% |
+| Sparse predictive coding | 18.38 | +183% |
+
+**Key insight:** Weight clamping is essential. Without it, weights grow and the $\delta_L \approx \delta_l$ approximation breaks. Gating, diminishing, and hybrid strategies all underperform simple clamping.
+
 ## Results
 
 ### Qwen3.5-0.8B (Proximal NBGA)
@@ -46,6 +63,7 @@ Fine-tuned on OpenCodeInstruct (2K examples) using pure $\delta_L$ broadcast ($\
 - Training time: ~30 minutes on RTX 4090 (5000 steps)
 - Memory: ~10 GB peak
 - No backpropagation through the 32-layer stack — each layer gets $\delta_L$ independently
+- **NBGA degrades with extended training.** HumanEval peaks at step 2900 (42.7%) and drops to 32.3% by step 5000. The shared $\delta_L$ signal causes correlated weight drift — use as a fast warm-start, not a convergence procedure.
 
 ## Quick Start
 

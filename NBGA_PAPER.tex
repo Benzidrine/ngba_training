@@ -116,13 +116,52 @@ HumanEval pass@1 & 37.2\% & 42.7\% & $+5.5\%$ \\
 
 The HumanEval improvement is our first downstream task validation of NBGA at scale. The $\delta_L$ broadcast, while a coarse approximation, captures enough signal for the model to improve functional code generation. Training takes $\sim$30 minutes on a single RTX 4090 (5000 steps, 10 GB peak memory).
 
+However, the HumanEval improvement peaks early (step 2900, 42.7\%) and degrades with continued training (step 5000, 32.3\%), despite perplexity remaining flat. The shared $\delta_L$ signal causes all layer weights to drift in correlated directions, overwriting useful structure when training continues past the optimal point.
+
+\section{Controlled Comparison: TinyShakespeare}
+
+We conduct controlled experiments on TinyShakespeare (character-level LM, 1M training tokens, $d=128$, conv+attn+MLP residual stack) to compare NBGA against full backprop, SPSA, and architectural variants under identical conditions.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Method & Val PPL & $\Delta$ from backprop \\
+\midrule
+Full backprop & 6.50 & --- \\
+NBGA + weight clamp ($\pm0.05$) & 6.75 & $+4\%$ \\
+SPSA (per-layer) & 7.78 & $+20\%$ \\
+NBGA + ReZero gates & 11.5 & $+77\%$ \\
+NBGA + alternating SPSA & 11.75 & $+81\%$ \\
+NBGA + layer diminishing ($1/N$) & 12.23 & $+88\%$ \\
+NBGA + gated residual ($\sigma$) & 12.33 & $+90\%$ \\
+Sparse predictive coding (local loss) & 18.38 & $+183\%$ \\
+\bottomrule
+\end{tabular}
+\caption{TinyShakespeare controlled experiments. All methods use the same base architecture and training budget except where noted.}
+\end{table}
+
+Key findings from these ablations:
+\begin{itemize}
+\item \textbf{Weight clamping is essential.} Without it, weights grow, $\|J_f\|$ increases, and the $\delta_L \approx \delta_l$ approximation breaks down. Diminishing and gating cannot substitute for clamping.
+\item \textbf{NBGA cannot learn ReZero-style gates.} When the residual path is initially closed ($\alpha=0$), the gradient $\delta_L \cdot f(h)$ vanishes because $f(h) \approx 0$ at initialization. The gate never opens.
+\item \textbf{SPSA and NBGA are incompatible.} Alternating their updates produces conflicting gradient signals that hurt both methods.
+\item \textbf{Local predictive losses trivialize.} Each layer learns to predict its input rather than learning task-relevant features, plateauing far above backprop performance.
+\end{itemize}
+
 \section{Limitations}
 
-NBGA's approximation error grows with the spectral norm of the residual Jacobian $\|J_f\|$. For pre-trained models with large weights, the proximal term is essential. For knowledge editing (changing specific factual associations) the broadcast $\delta_L$ signal across all blocks is less effective than targeted methods like MEMIT or ROME. The method performs best when either training from scratch with bounded weights or fine-tuning with the proximal constraint.
+NBGA's approximation error grows with the spectral norm of the residual Jacobian $\|J_f\|$. For pre-trained models with large weights, the proximal term is essential; at 4B scale, even with high learning rate, the $\delta_L$ broadcast degrades downstream performance if training continues past a critical point (step $\sim$3000 for Qwen3.5-4B). The method is best used as a fast warm-start rather than a full training procedure.
+
+NBGA cannot learn architectural gating mechanisms (ReZero, sigmoid gates, layer diminishing). When the residual path is initially attenuated, the gradient $\delta_L \cdot f(h)$ vanishes because $f(h) \approx 0$, preventing the gate from ever opening. Standard residual connections with weight clamping outperform all gated variants tested.
+
+The method shares a deeper limitation with all chain-rule-free approaches: local predictive losses (as in predictive coding) trivialize to input reconstruction rather than learning task-relevant features, while global approximations (NBGA, SPSA) accumulate approximation error. No known method bridges the gap between local Hebbian plasticity and the expressiveness of backpropagation at scale.
 
 \section{Conclusion}
 
 NBGA demonstrates that residual networks can be fine-tuned without computing the chain rule between layers, using only the final-output gradient as a universal learning signal. A 752M-parameter, 24-block model was successfully instruction-tuned on Alpaca and OpenHermes data, with every block updated independently using $\delta_L$. Scaling to 4B parameters on OpenCodeInstruct yields a +5.5\% improvement on HumanEval pass@1, confirming that the $\delta_L$ broadcast carries sufficient signal for meaningful downstream improvement even at scale. The method is simple, parallelizable, memory-efficient, and runs on consumer hardware.
+
+Controlled experiments on TinyShakespeare establish NBGA's position relative to backprop: within 4\% of full backprop perplexity when combined with weight clamping, outperforming SPSA and all architectural variants tested. However, the method degrades with extended training, cannot learn architectural gating, and fundamentally depends on small residual Jacobians. These findings map the boundaries of chain-rule-free training at scale and identify weight-constrained residual networks as the architecture best suited for gradient approximation methods.
 
 \section*{Code}
 
